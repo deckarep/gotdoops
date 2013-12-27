@@ -24,8 +24,9 @@ import (
 
 const thumbnailDir = "thumbs/"
 
-var fileTypes = mapset.NewSetFromSlice([]interface{}{"png", "jpg", "jpeg", "ncf"})
+var fileTypes = mapset.NewSetFromSlice([]interface{}{"jpg", "jpeg", "JPG", "JPEG"})
 var fileCorpus = make(map[string][]string)
+var directoriesWithDupes = mapset.NewSet()
 
 func visit(path string, f os.FileInfo, err error) error {
 	if !f.IsDir() {
@@ -33,6 +34,8 @@ func visit(path string, f os.FileInfo, err error) error {
 		ext := pieces[len(pieces)-1]
 
 		if fileTypes.Contains(ext) {
+
+			log.Println("Analyzing file: ", path)
 			h := hashFile(path)
 
 			item, ok := fileCorpus[h]
@@ -45,6 +48,12 @@ func visit(path string, f os.FileInfo, err error) error {
 		}
 	}
 	return nil
+}
+
+func hashString(s string) string {
+	h := md5.New()
+	h.Write([]byte(s))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 func hashFile(path string) string {
@@ -70,8 +79,15 @@ func showDuplicates() {
 	counter := 0
 	for k, v := range fileCorpus {
 		if len(v) > 1 {
-			//fmt.Println(k, v)
-			rows = append(rows, fmt.Sprintf("<tr><td>%d</td><td><img class=\"img-thumbnail\" src=\"thumbs/%s.jpg\" width=\"100px\" height=\"70px\"/></td><td>%s</td></tr>", counter, k, strings.Join(Wrap(v, "<a href=\"#\">", "</a>"), "<br />")))
+
+			hashes := make([]string, len(v))
+			for i, fp := range v {
+				dir := filepath.Dir(fp)
+				directoriesWithDupes.Add(dir)
+				hashes[i] = "dupe" + hashString(dir)
+			}
+
+			rows = append(rows, fmt.Sprintf("<tr class=\"%s\" style=\"display:none;\"><td><img class=\"img-thumbnail\" src=\"thumbs/%s.jpg\" width=\"100px\" height=\"70px\"/></td><td>%s</td></tr>", strings.Join(hashes, " "), k, strings.Join(Wrap(v, "<a href=\"#\">", "</a>"), "<br />")))
 
 			//take the first of the duplicates and generate a thumbnail
 			resizeImage(v[0], k)
@@ -80,7 +96,13 @@ func showDuplicates() {
 		}
 	}
 
-	finalHTML := strings.Replace(htmlTemplate, "{{DATA}}", strings.Join(rows, ""), -1)
+	log.Printf("Detected %d duplicates.", counter)
+
+	dirs := strings.Split(strings.Replace(strings.Replace(directoriesWithDupes.String(), "Set{", "", -1), "}", "", -1), ",")
+
+	finalHTML := strings.Replace(htmlTemplate, "{{directories}}", strings.Join(Wrap(dirs, "<li class=\"list-group-item\"><a href=\"javascript:showFolder('@');\">", "</a></li>"), ""), -1)
+	finalHTML = strings.Replace(finalHTML, "{{DATA}}", strings.Join(rows, ""), -1)
+
 	f, err := os.Create("report.html")
 	if err != nil {
 		log.Fatal("Couldn't create file: ", err)
@@ -93,7 +115,8 @@ func Wrap(s []string, prefix, suffix string) []string {
 	result := make([]string, len(s))
 
 	for i, v := range s {
-		result[i] = strings.Replace(prefix, "#", v, -1) + v + suffix
+		m := strings.Trim(v, " ")
+		result[i] = strings.Replace(strings.Replace(prefix, "#", m, -1), "@", hashString(m), -1) + m + suffix
 	}
 	return result
 }
@@ -107,6 +130,8 @@ func main() {
 		log.Println("Walk failed with err: ", err)
 	}
 
+	log.Println(directoriesWithDupes)
+
 	showDuplicates()
 
 	exec.Command("open", "report.html").Start()
@@ -114,30 +139,36 @@ func main() {
 
 func resizeImage(f string, id string) {
 
-	file, err := os.Open(f)
-	if err != nil {
-		log.Fatal(err)
+	destinationFilePath := filepath.Join(thumbnailDir, id+".jpg")
+
+	//if the file doesn't already exist, generate it
+	if _, err := os.Stat(destinationFilePath); os.IsNotExist(err) {
+
+		file, err := os.Open(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// decode jpeg into image.Image
+		img, err := jpeg.Decode(file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		file.Close()
+
+		// resize to width 1000 using Lanczos resampling
+		// and preserve aspect ratio
+		m := resize.Resize(100, 70, img, resize.Bilinear)
+
+		out, err := os.Create(destinationFilePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer out.Close()
+
+		// write new image to file
+		jpeg.Encode(out, m, nil)
 	}
-
-	// decode jpeg into image.Image
-	img, err := jpeg.Decode(file)
-	if err != nil {
-		log.Fatal(err)
-	}
-	file.Close()
-
-	// resize to width 1000 using Lanczos resampling
-	// and preserve aspect ratio
-	m := resize.Resize(100, 70, img, resize.Bilinear)
-
-	out, err := os.Create(filepath.Join(thumbnailDir, id+".jpg"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer out.Close()
-
-	// write new image to file
-	jpeg.Encode(out, m, nil)
 }
 
 var htmlTemplate = `
@@ -163,18 +194,36 @@ var htmlTemplate = `
     <script src="https://code.jquery.com/jquery.js"></script>
     <!-- Include all compiled plugins (below), or include individual files as needed -->
     <script src="http://netdna.bootstrapcdn.com/bootstrap/3.0.3/js/bootstrap.min.js"></script>
-    <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>ID</th>
-            <th>Files</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{DATA}}
-        </tbody>
-      </table>
+    <div class="panel panel-default">
+  		<div class="panel-body">
+    		<ul class="list-group">
+  				{{directories}}
+  			</ul>
+  		</div>
+	</div>
+	<div class="panel panel-default">
+		<div class="panel-body">
+		    <table class="table table-striped">
+		        <thead>
+		          <tr>
+		            <th>Preview</th>
+		            <th>Files</th>
+		          </tr>
+		        </thead>
+		        <tbody>
+		          {{DATA}}
+		        </tbody>
+		    </table>
+		</div>
+	</div>
+    <script>
+    	function showFolder(name){
+    		$('tbody tr').hide();
+
+    		var items = $(".dupe" + name);
+			items.show();    		
+    	};
+    </script>
   </body>
 </html>
 `
