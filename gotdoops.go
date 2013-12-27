@@ -87,7 +87,7 @@ func showDuplicates() {
 				hashes[i] = "dupe" + hashString(dir)
 			}
 
-			rows = append(rows, fmt.Sprintf("<tr class=\"%s\" style=\"display:none;\"><td><img class=\"img-thumbnail\" src=\"thumbs/%s.jpg\" width=\"100px\" height=\"70px\"/></td><td>%s</td></tr>", strings.Join(hashes, " "), k, strings.Join(Wrap(v, "<a href=\"#\">", "</a>"), "<br />")))
+			rows = append(rows, fmt.Sprintf("<tr class=\"%s\" style=\"display:none;\"><td><img class=\"img-thumbnail\" src=\"thumbs/%s.jpg\" width=\"100px\" height=\"70px\"/></td><td>%s</td></tr>", strings.Join(hashes, " "), k, strings.Join(Wrap(v, "<a href=\"#\">", "</a>&nbsp;&nbsp;<a href=\"!\"><span class=\"glyphicon glyphicon-folder-open\"></a></span>"), "<br />")))
 
 			//take the first of the duplicates and generate a thumbnail
 			resizeImage(v[0], k)
@@ -100,7 +100,7 @@ func showDuplicates() {
 
 	dirs := strings.Split(strings.Replace(strings.Replace(directoriesWithDupes.String(), "Set{", "", -1), "}", "", -1), ",")
 
-	finalHTML := strings.Replace(htmlTemplate, "{{directories}}", strings.Join(Wrap(dirs, "<li class=\"list-group-item\"><a href=\"javascript:showFolder('@');\">", "</a></li>"), ""), -1)
+	finalHTML := strings.Replace(htmlTemplate, "{{directories}}", strings.Join(Wrap(dirs, "<option value=\"@\">", "</option>"), ""), -1)
 	finalHTML = strings.Replace(finalHTML, "{{DATA}}", strings.Join(rows, ""), -1)
 
 	f, err := os.Create("report.html")
@@ -116,7 +116,8 @@ func Wrap(s []string, prefix, suffix string) []string {
 
 	for i, v := range s {
 		m := strings.Trim(v, " ")
-		result[i] = strings.Replace(strings.Replace(prefix, "#", m, -1), "@", hashString(m), -1) + m + suffix
+		sourceFolder := filepath.Join(filepath.Dir(m), ".DS_Store")
+		result[i] = strings.Replace(strings.Replace(prefix, "#", m, -1), "@", hashString(m), -1) + m + strings.Replace(suffix, "!", sourceFolder, -1)
 	}
 	return result
 }
@@ -196,9 +197,9 @@ var htmlTemplate = `
     <script src="http://netdna.bootstrapcdn.com/bootstrap/3.0.3/js/bootstrap.min.js"></script>
     <div class="panel panel-default">
   		<div class="panel-body">
-    		<ul class="list-group">
-  				{{directories}}
-  			</ul>
+  			<select id="dirDropdown" class="form-control">
+				{{directories}}
+  			</select>
   		</div>
 	</div>
 	<div class="panel panel-default">
@@ -217,6 +218,13 @@ var htmlTemplate = `
 		</div>
 	</div>
     <script>
+    	$(function(){
+    		$('#dirDropdown').change(function(e){
+    			showFolder(e.currentTarget.value);
+    		});
+		});
+
+
     	function showFolder(name){
     		$('tbody tr').hide();
 
