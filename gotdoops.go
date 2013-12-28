@@ -25,7 +25,8 @@ import (
 const thumbnailDir = "thumbs/"
 
 var fileTypes = mapset.NewSetFromSlice([]interface{}{"jpg", "jpeg", "JPG", "JPEG"})
-var fileCorpus = make(map[string][]string)
+var fileSizeCorpus = make(map[int64][]string)
+var fileHashCorpus = make(map[string][]string)
 var directoriesWithDupes = mapset.NewSet()
 
 func visit(path string, f os.FileInfo, err error) error {
@@ -35,16 +36,37 @@ func visit(path string, f os.FileInfo, err error) error {
 
 		if fileTypes.Contains(ext) {
 
-			log.Println("Analyzing file: ", path)
-			h := hashFile(path)
+			log.Println("Analyzing file size: ", path)
 
-			item, ok := fileCorpus[h]
+			fi, err := os.Open(path)
+			if err != nil {
+				panic("Could open file!")
+			}
+
+			defer fi.Close()
+
+			in, err := fi.Stat()
+			if err != nil {
+				panic("Could get file info!")
+			}
+
+			item, ok := fileSizeCorpus[in.Size()]
 			if ok {
 				item = append(item, path)
-				fileCorpus[h] = item
+				fileSizeCorpus[in.Size()] = item
 			} else {
-				fileCorpus[h] = []string{path}
+				fileSizeCorpus[in.Size()] = []string{path}
 			}
+
+			// h := hashFile(path)
+
+			// item, ok := fileHashCorpus[h]
+			// if ok {
+			// 	item = append(item, path)
+			// 	fileHashCorpus[h] = item
+			// } else {
+			// 	fileHashCorpus[h] = []string{path}
+			// }
 		}
 	}
 	return nil
@@ -71,13 +93,32 @@ func hashFile(path string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
+func findPotentialDuplicates() {
+	for _, v := range fileSizeCorpus {
+		if len(v) > 1 {
+			for _, path := range v {
+				h := hashFile(path)
+
+				log.Println("Analyzing hashes: ", path)
+				item, ok := fileHashCorpus[h]
+				if ok {
+					item = append(item, path)
+					fileHashCorpus[h] = item
+				} else {
+					fileHashCorpus[h] = []string{path}
+				}
+			}
+		}
+	}
+}
+
 //TODO: generate an html report to disk, then open the report in the browser
 // each filepath should be a link to the file on disk file:///
-func showDuplicates() {
+func processDuplicates() {
 
 	rows := make([]string, 0)
 	counter := 0
-	for k, v := range fileCorpus {
+	for k, v := range fileHashCorpus {
 		if len(v) > 1 {
 
 			hashes := make([]string, len(v))
@@ -98,7 +139,17 @@ func showDuplicates() {
 
 	log.Printf("Detected %d duplicates.", counter)
 
-	dirs := strings.Split(strings.Replace(strings.Replace(directoriesWithDupes.String(), "Set{", "", -1), "}", "", -1), ",")
+	//BUG!!! Trying to parse the set is bad for biz
+	//dirs := strings.Split(strings.Replace(strings.Replace(directoriesWithDupes.String(), "Set{", "", -1), "}", "", -1), ",")
+	dirs := make([]string, directoriesWithDupes.Cardinality())
+	dirCounter := 0
+	for dir := range directoriesWithDupes.Iter() {
+		v, ok := dir.(string)
+		if ok {
+			dirs[dirCounter] = v
+		}
+		dirCounter++
+	}
 
 	finalHTML := strings.Replace(htmlTemplate, "{{directories}}", strings.Join(Wrap(dirs, "<option value=\"@\">", "</option>"), ""), -1)
 	finalHTML = strings.Replace(finalHTML, "{{DATA}}", strings.Join(rows, ""), -1)
@@ -131,9 +182,13 @@ func main() {
 		log.Println("Walk failed with err: ", err)
 	}
 
-	log.Println(directoriesWithDupes)
+	//finds by matching file sizes (stating the file, for speed)
+	findPotentialDuplicates()
 
-	showDuplicates()
+	//finds by actually md5 hasing (byte analysis)
+	processDuplicates()
+
+	log.Println(directoriesWithDupes)
 
 	exec.Command("open", "report.html").Start()
 }
