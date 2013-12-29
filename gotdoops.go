@@ -17,9 +17,9 @@ import (
 
 /*
   TODO:
-        1.) optimize further, by looking at file size first then following through with md5.
-        2.) run concurrently since the problem is embarassingly parallel
-        3.) more fixes, minor tweaks to make more robust
+        1.) run concurrently since the problem is embarassingly parallel
+        2.) more fixes, minor tweaks to make more robust
+        3.) Use template library instead of dirty string/replace hacks (I was lazy)
 */
 
 const thumbnailDir = "thumbs/"
@@ -57,16 +57,6 @@ func visit(path string, f os.FileInfo, err error) error {
 			} else {
 				fileSizeCorpus[in.Size()] = []string{path}
 			}
-
-			// h := hashFile(path)
-
-			// item, ok := fileHashCorpus[h]
-			// if ok {
-			// 	item = append(item, path)
-			// 	fileHashCorpus[h] = item
-			// } else {
-			// 	fileHashCorpus[h] = []string{path}
-			// }
 		}
 	}
 	return nil
@@ -94,6 +84,9 @@ func hashFile(path string) string {
 }
 
 func findPotentialDuplicates() {
+
+	log.Println(fileSizeCorpus)
+
 	for _, v := range fileSizeCorpus {
 		if len(v) > 1 {
 			for _, path := range v {
@@ -139,8 +132,6 @@ func processDuplicates() {
 
 	log.Printf("Detected %d duplicates.", counter)
 
-	//BUG!!! Trying to parse the set is bad for biz
-	//dirs := strings.Split(strings.Replace(strings.Replace(directoriesWithDupes.String(), "Set{", "", -1), "}", "", -1), ",")
 	dirs := make([]string, directoriesWithDupes.Cardinality())
 	dirCounter := 0
 	for dir := range directoriesWithDupes.Iter() {
@@ -278,7 +269,6 @@ var htmlTemplate = `
     			showFolder(e.currentTarget.value);
     		});
 		});
-
 
     	function showFolder(name){
     		$('tbody tr').hide();
