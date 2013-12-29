@@ -35,6 +35,11 @@ go get github.com/deckarep/gotdoops
 go run gotdoops.go [folder/with/images]
 ```
 
+imports
+=======
+*  github.com/deckarep/golang-set
+*  github.com/nfnt/resize
+
 contributions
 =============
 Are absolutely welcome and encouraged!
