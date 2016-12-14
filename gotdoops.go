@@ -166,6 +166,10 @@ func Wrap(s []string, prefix, suffix string) []string {
 
 func main() {
 
+	if _, err := os.Stat(thumbnailDir); os.IsNotExist(err) {
+		os.Mkdir(thumbnailDir, 0700)
+	}
+
 	flag.Parse()
 	root := flag.Arg(0)
 	err := filepath.Walk(root, visit)
@@ -225,7 +229,7 @@ var htmlTemplate = `
     <title>Duplicate Images</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Bootstrap -->
-    <link href="http://netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
@@ -235,35 +239,40 @@ var htmlTemplate = `
     <![endif]-->
   </head>
   <body>
-    <h3>Found the following duplicate images:</h3>
 
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://code.jquery.com/jquery.js"></script>
     <!-- Include all compiled plugins (below), or include individual files as needed -->
-    <script src="http://netdna.bootstrapcdn.com/bootstrap/3.0.3/js/bootstrap.min.js"></script>
-    <div class="panel panel-default">
-  		<div class="panel-body">
-  			<select id="dirDropdown" class="form-control">
-				{{directories}}
-  			</select>
-  		</div>
-	</div>
-	<div class="panel panel-default">
-		<div class="panel-body">
-		    <table class="table table-striped">
-		        <thead>
-		          <tr>
-		            <th>Preview</th>
-		            <th>Files</th>
-		          </tr>
-		        </thead>
-		        <tbody>
-		          {{DATA}}
-		        </tbody>
-		    </table>
+    <script src="https://netdna.bootstrapcdn.com/bootstrap/3.0.3/js/bootstrap.min.js"></script>
+	<div class="container-fluid">
+		<div class="col-lg-10 col-lg-offset-1">
+    	<h3>Found the following duplicate images:</h3>
+		<hr>
+			<div class="panel panel-default">
+				<div class="panel-body">
+					<select id="dirDropdown" class="form-control">
+						{{directories}}
+					</select>
+				</div>
+			</div>
+			<div class="panel panel-default">
+				<div class="panel-body">
+					<table class="table table-striped">
+						<thead>
+						  <tr>
+							<th>Preview</th>
+							<th>Files</th>
+						  </tr>
+						</thead>
+						<tbody>
+						  {{DATA}}
+						</tbody>
+					</table>
+				</div>
+			</div>
 		</div>
 	</div>
-    <script>
+		<script>
     	$(function(){
     		$('#dirDropdown').change(function(e){
     			showFolder(e.currentTarget.value);
